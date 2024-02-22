@@ -1,0 +1,85 @@
+-- Trigger para reducir el stock cuando se realiza un pedido
+CREATE TRIGGER ReduceStockPedido
+AFTER INSERT ON PEDIDOS
+FOR EACH ROW
+BEGIN
+    UPDATE PRODUCTOSALMACENES
+    SET STOCK = STOCK - NEW.CANTIDAD
+    WHERE ID_PROD = NEW.ID_PROD;
+END;
+
+-- Trigger para aumentar el stock cuando se elimina un pedido
+CREATE TRIGGER AumentaStockPedido
+AFTER DELETE ON PEDIDOS
+FOR EACH ROW
+BEGIN
+    UPDATE PRODUCTOSALMACENES
+    SET STOCK = STOCK + OLD.CANTIDAD
+    WHERE ID_PROD = OLD.ID_PROD;
+END;
+
+-- Trigger para auditoría de cambios en la tabla PRODUCTOS
+CREATE TRIGGER AuditoriaCambiosProductos
+BEFORE UPDATE ON PRODUCTOS
+FOR EACH ROW
+BEGIN
+    INSERT INTO AUDITORIACAMBIOS (TABLAAFECTADA, ID_REGISTROAFECTADO, CAMPOAFECTADO, VALORANTERIOR, VALORNUEVO, FECHA, USUARIO)
+    VALUES ('PRODUCTOS', OLD.ID_PROD, 'DESCRIPCION', OLD.DESCRIPCION, NEW.DESCRIPCION, NOW(), 'Admin');
+END;
+
+-- Trigger para mantener el historial de pedidos actualizado
+CREATE TRIGGER ActualizarHistorialPedidos
+AFTER UPDATE ON PEDIDOS
+FOR EACH ROW
+BEGIN
+    INSERT INTO HISTORIALPEDIDOS (ID_PEDIDOS, ESTADOANTERIOR, ESTADONUEVO, ID_USUARIO, FECHA)
+    VALUES (OLD.ID_PEDIDOS, OLD.ESTADO, NEW.ESTADO, NEW.ID_USUARIO, NOW());
+END;
+
+
+-- Trigger para aplicar descuentos automáticamente al insertar una factura
+CREATE TRIGGER AplicarDescuentosFactura
+BEFORE INSERT ON FACTURAS
+FOR EACH ROW
+BEGIN
+    DECLARE descuento DECIMAL(5,2);
+    SELECT PORCENTAJE INTO descuento
+    FROM OFERTAS o
+    INNER JOIN OFERTASCLIENTES oc ON o.ID_OFERTAS = oc.ID_OFERTA
+    WHERE oc.ID_CLIENTE = NEW.ID_CLIENTE
+    AND NOW() BETWEEN o.FECHAINICIO AND o.FECHAFIN;
+
+    IF descuento IS NOT NULL THEN
+        SET NEW.TOTAL = NEW.TOTAL * (1 - descuento / 100);
+    END IF;
+END;
+
+
+-- Trigger para mantener la integridad referencial al eliminar un proveedor
+CREATE TRIGGER MantenerIntegridadProveedor
+BEFORE DELETE ON PROVEEDORES
+FOR EACH ROW
+BEGIN
+    IF EXISTS (SELECT 1 FROM PRODUCTOS WHERE ID_PROV = OLD.ID_PROV) THEN
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'No se puede eliminar este proveedor porque hay productos asociados a él.';
+    END IF;
+END;
+
+
+-- Trigger para realizar cálculos automáticos al agregar un nuevo producto a una categoría
+CREATE TRIGGER ActualizarPromedioPrecioCategoria
+AFTER INSERT ON PRODUCTOSCATEGORIAS
+FOR EACH ROW
+BEGIN
+    DECLARE total DECIMAL(10, 2);
+    DECLARE cantidad INT;
+    SELECT SUM(PRECIO) INTO total, COUNT(*) INTO cantidad
+    FROM PRODUCTOS
+    WHERE ID_PROD IN (SELECT ID_PROD FROM PRODUCTOSCATEGORIAS WHERE ID_CAT_PROD = NEW.ID_CAT_PROD);
+
+    IF cantidad > 0 THEN
+        UPDATE CATEGORIASPRODUCTOS
+        SET PROMEDIOPRECIO = total / cantidad
+        WHERE ID_CAT_PROD = NEW.ID_CAT_PROD;
+    END IF;
+END;
