@@ -16,6 +16,7 @@ Este proyecto consiste en un sistema de gestion de inventario y ventas desarroll
 - Nombre de la base de Datos: Sistema Inventario
 - Gestor de Base de Datos: MySql Workbench
 - lenguaje de consulta: SQL, PL/SQL
+- Los archivos de la base de datos todos se pusieron por separado para tener una mejor organización del sistema.
 
 ### Estructura de la Base de Datos:
 
